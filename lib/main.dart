@@ -46,6 +46,18 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
     });
   }
 
+  void _removePoint(int index) {
+    setState(() {
+      points.removeAt(index);
+      pointNames.removeAt(index);
+
+      // Reset lại kết quả tối ưu vì danh sách điểm đã thay đổi
+      optimizedPoints.clear();
+      routePolyline.clear();
+      totalDistance = null;
+    });
+  }
+
   void _onSearchChanged(String query) {
     if (_debounce?.isActive ?? false) _debounce!.cancel();
     _debounce = Timer(const Duration(milliseconds: 500), () async {
@@ -228,6 +240,51 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
               ),
             ),
 
+
+          if (points.isNotEmpty)
+            Container(
+              height: 50,
+              padding: const EdgeInsets.symmetric(horizontal: 8.0),
+              margin: const EdgeInsets.only(bottom: 8.0),
+              child: ListView.builder(
+                scrollDirection: Axis.horizontal,
+                itemCount: points.length,
+                itemBuilder: (context, index) {
+                  // Lấy số thứ tự hiển thị (nếu đã tối ưu thì hiện số mới, chưa thì hiện số gốc)
+                  int displayIdx = index + 1;
+                  if (optimizedPoints.isNotEmpty) {
+                    displayIdx = optimizedPoints.indexOf(points[index]) + 1;
+                  }
+
+                  return Padding(
+                    padding: const EdgeInsets.only(right: 8.0),
+                    child: InputChip(
+                      label: Text(
+                        pointNames[index],
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      avatar: CircleAvatar(
+                        backgroundColor: Colors.blue.shade700,
+                        child: Text(
+                          '$displayIdx',
+                          style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                      deleteIcon: const Icon(Icons.cancel, size: 18, color: Colors.redAccent),
+                      onDeleted: () => _removePoint(index), // Gọi hàm xóa khi bấm dấu X
+                      backgroundColor: Colors.blue.shade50,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
           // Bản đồ
           Expanded(
             child: FlutterMap(
