@@ -19,14 +19,28 @@ class SearchResult {
 }
 
 class ApiServices {
-  static const String osrmBaseUrl = 'https://router.project-osrm.org';
   static const String nominatimUrl = 'https://nominatim.openstreetmap.org';
-  // 1. Tìm kiếm địa điểm (Đã sửa lỗi User-Agent)
+  static String _getOsrmEndpoint(String profile, String service) {
+    String baseUrl;
+    switch (profile) {
+      case 'bike':
+        baseUrl = 'https://routing.openstreetmap.de/routed-bike';
+        break;
+      case 'foot':
+        baseUrl = 'https://routing.openstreetmap.de/routed-foot';
+        break;
+      case 'driving':
+      default:
+        baseUrl = 'https://routing.openstreetmap.de/routed-car';
+        break;
+    }
+
+    return '$baseUrl/$service/v1/driving';
+  }
+
   static Future<List<SearchResult>> searchLocation(String query) async {
     if (query.trim().isEmpty) return [];
-
     try {
-      // Encode query để xử lý tiếng Việt có dấu và dấu cách
       final encodedQuery = Uri.encodeComponent(query);
       final url = Uri.parse(
           '$nominatimUrl/search?q=$encodedQuery&format=json&limit=5&addressdetails=1&countrycodes=vn');
@@ -34,16 +48,14 @@ class ApiServices {
       final response = await http.get(
         url,
         headers: {
-          'User-Agent': 'SmartRoutePlannerApp/1.0 (quitdhe176583@fpt.edu.vn)', // Thay email của bạn vào đây
-          'Accept-Language': 'vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7', // Ưu tiên kết quả tiếng Việt
+          'User-Agent': 'SmartRoutePlannerApp/1.0 (your_email@example.com)',
+          'Accept-Language': 'vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7',
         },
       );
 
       if (response.statusCode == 200) {
         final List data = json.decode(response.body);
         return data.map((json) => SearchResult.fromJson(json)).toList();
-      } else {
-        print('Nominatim Error: ${response.statusCode} - ${response.body}');
       }
     } catch (e) {
       print('Search Exception: $e');
@@ -51,17 +63,28 @@ class ApiServices {
     return [];
   }
 
-  // 2. Lấy ma trận khoảng cách
-  static Future<List<List<double>>> getDistanceMatrix(List<LatLng> points) async {
+  static Future<List<List<double>>> getDistanceMatrix(List<LatLng> points, {String profile = 'driving'}) async {
     if (points.length < 2) return [];
     final coords = points.map((p) => '${p.longitude},${p.latitude}').join(';');
     try {
-      final response = await http.get(
-          Uri.parse('$osrmBaseUrl/table/v1/driving/$coords?annotations=distance'));
+      final url = '${_getOsrmEndpoint(profile, 'table')}/$coords?annotations=distance';
+      final response = await http.get(Uri.parse(url));
+
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
         List<dynamic> distances = data['distances'];
-        return distances.map((row) => (row as List).map((v) => (v as num).toDouble()).toList()).toList();
+
+        return distances.map((row) {
+          return (row as List).map((v) {
+            if (v == null) {
+
+              return double.infinity;
+            }
+            return (v as num).toDouble();
+          }).toList();
+        }).toList();
+      } else {
+        print('OSRM Table Error: ${response.statusCode} - ${response.body}');
       }
     } catch (e) {
       print('Matrix error: $e');
@@ -69,13 +92,13 @@ class ApiServices {
     return [];
   }
 
-  // 3. Lấy đường vẽ (Polyline)
-  static Future<Map<String, dynamic>?> getRouteGeometry(List<LatLng> points) async {
+  static Future<Map<String, dynamic>?> getRouteGeometry(List<LatLng> points, {String profile = 'driving'}) async {
     if (points.length < 2) return null;
     final coords = points.map((p) => '${p.longitude},${p.latitude}').join(';');
     try {
-      final response = await http.get(
-          Uri.parse('$osrmBaseUrl/route/v1/driving/$coords?overview=full&geometries=geojson'));
+      final url = '${_getOsrmEndpoint(profile, 'route')}/$coords?overview=full&geometries=geojson';
+      final response = await http.get(Uri.parse(url));
+
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
         final route = data['routes'][0];
@@ -98,7 +121,6 @@ class ApiServices {
   }
 }
 
-// Thuật toán TSP (Nearest Neighbor + 2-opt)
 class RouteOptimizer {
   final List<List<double>> distanceMatrix;
   final int numPoints;

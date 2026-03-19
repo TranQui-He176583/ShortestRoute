@@ -22,7 +22,7 @@ class RoutePlannerScreen extends StatefulWidget {
 
 class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
   final MapController _mapController = MapController();
-
+  String selectedProfile = 'driving';
   List<LatLng> points = [];
   List<String> pointNames = [];
   List<LatLng> optimizedPoints = [];
@@ -31,7 +31,6 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
   bool isOptimizing = false;
   double? totalDistance;
 
-  // Search
   final TextEditingController _searchController = TextEditingController();
   Timer? _debounce;
   List<SearchResult> searchResults = [];
@@ -84,7 +83,7 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
     setState(() => isOptimizing = true);
 
     try {
-      final matrix = await ApiServices.getDistanceMatrix(points);
+      final matrix = await ApiServices.getDistanceMatrix(points, profile: selectedProfile);
       if (matrix.isEmpty) throw Exception("Lỗi lấy ma trận");
 
       final optimizer = RouteOptimizer(matrix);
@@ -92,7 +91,7 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
 
       List<LatLng> newOrderedPoints = pathIndices.map((i) => points[i]).toList();
 
-      final routeData = await ApiServices.getRouteGeometry(newOrderedPoints);
+      final routeData = await ApiServices.getRouteGeometry(newOrderedPoints, profile: selectedProfile);
 
       setState(() {
         optimizedPoints = newOrderedPoints;
@@ -122,16 +121,15 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
       waypoints = "&waypoints=${wpList.map((p) => '${p.latitude},${p.longitude}').join('|')}";
     }
 
+    String travelMode = 'driving';
+    if (selectedProfile == 'bike') travelMode = 'two-wheeler';
+    if (selectedProfile == 'foot') travelMode = 'walking';
+
     final url = Uri.parse(
-        'https://www.google.com/maps/dir/?api=1&origin=${origin.latitude},${origin.longitude}&destination=${dest.latitude},${dest.longitude}$waypoints&travelmode=driving');
+        'https://www.google.com/maps/dir/?api=1&origin=${origin.latitude},${origin.longitude}&destination=${dest.latitude},${dest.longitude}$waypoints&travelmode=$travelMode');
 
     if (await canLaunchUrl(url)) {
-      await launchUrl(
-        url,
-        mode: LaunchMode.externalApplication,
-      );
-    } else {
-      throw 'Could not launch $url';
+      await launchUrl(url, mode: LaunchMode.externalApplication);
     }
   }
 
@@ -156,7 +154,6 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
       ),
       body: Column(
         children: [
-          // Thanh tìm kiếm
           Padding(
             padding: const EdgeInsets.all(8.0),
             child: Row(
@@ -188,7 +185,6 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
             ),
           ),
 
-          // Kết quả tìm kiếm (Đã sửa layout)
           if (searchResults.isNotEmpty)
             Container(
               margin: const EdgeInsets.symmetric(horizontal: 8.0),
@@ -199,7 +195,6 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
                   BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))
                 ],
               ),
-              // Giới hạn chiều cao tối đa để không đẩy bản đồ biến mất
               constraints: const BoxConstraints(maxHeight: 250),
               child: ListView.separated(
                 shrinkWrap: true, // Quan trọng: Để ListView tự co lại theo nội dung
@@ -238,7 +233,7 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
             child: FlutterMap(
               mapController: _mapController,
               options: MapOptions(
-                initialCenter: const LatLng(21.0285, 105.8542), // Hà Nội
+                initialCenter: const LatLng(21.0285, 105.8542),
                 initialZoom: 13.0,
                 onTap: (tapPosition, point) => _addPoint(point),
               ),
@@ -298,6 +293,47 @@ class _RoutePlannerScreenState extends State<RoutePlannerScreen> {
             ),
             child: Column(
               children: [
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      ChoiceChip(
+                        label: const Text('🚗 Ô tô'),
+                        selected: selectedProfile == 'driving',
+                        onSelected: (selected) {
+                          if (selected) setState(() => selectedProfile = 'driving');
+                        },
+                      ),
+                      const SizedBox(width: 8),
+                      ChoiceChip(
+                        label: const Text('🏍️ Xe máy'),
+                        selected: selectedProfile == 'bike',
+                        onSelected: (selected) {
+                          if (selected) setState(() => selectedProfile = 'bike');
+                        },
+                      ),
+                      const SizedBox(width: 8),
+                      ChoiceChip(
+                        label: const Text('🚶 Đi bộ'),
+                        selected: selectedProfile == 'foot',
+                        onSelected: (selected) {
+                          if (selected) setState(() => selectedProfile = 'foot');
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 8),
+
+                if (totalDistance != null)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8.0),
+                    child: Text(
+                      'Tổng quãng đường: ${(totalDistance! / 1000).toStringAsFixed(2)} km',
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                    ),
+                  ),
                 if (totalDistance != null)
                   Padding(
                     padding: const EdgeInsets.only(bottom: 8.0),
